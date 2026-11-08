@@ -2,7 +2,7 @@ import net.ltgt.gradle.errorprone.errorprone
 
 plugins {
     java
-    id("org.springframework.boot") version "4.0.9"
+    id("org.springframework.boot") version "4.1.2"
     id("io.spring.dependency-management") version "1.1.7"
     id("net.ltgt.errorprone") version "4.1.0"
     id("com.github.spotbugs") version "6.0.18"
@@ -89,13 +89,13 @@ dependencies {
 
     // Cluster-safe scheduling: only ONE instance runs each housekeeping job (not the
     // outbox relay — that one is parallel-safe via FOR UPDATE SKIP LOCKED). See SchedulingConfig.
-    implementation("net.javacrumbs.shedlock:shedlock-spring:5.16.0")
-    implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:5.16.0")
+    implementation("net.javacrumbs.shedlock:shedlock-spring:7.10.1")
+    implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
 
     // ── Resilience for outbound calls ──────────────────────────────────────────
     // Circuit breaker / retry / bulkhead as annotations; metrics auto-exported to Micrometer.
     // Reference wiring: infrastructure.payments.ResilientPaymentGateway.
-    implementation("io.github.resilience4j:resilience4j-spring-boot3:2.3.0")
+    implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
     implementation("org.springframework.boot:spring-boot-starter-aspectj") // proxies the resilience4j annotations
 
     // ── Caching ────────────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
 
     // Argon2id password hashing (required by Spring Security's Argon2PasswordEncoder)
     implementation("org.bouncycastle:bcprov-jdk18on:1.86")
@@ -144,7 +144,7 @@ dependencies {
     errorprone("com.uber.nullaway:nullaway:0.12.3")
 }
 
-// Boot 4.0.9 fixes the critical Spring/Tomcat and Jackson advisories. These
+// Boot 4.1.2 fixes the critical Spring/Tomcat and Jackson advisories. These
 // remaining transitive libraries are not managed at patched versions by its BOM.
 configurations.configureEach {
     resolutionStrategy.eachDependency {

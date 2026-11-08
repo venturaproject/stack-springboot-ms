@@ -9,7 +9,7 @@ kept in place.
 Security invariants are specified in the [Security Baseline](security-baseline.md) and are
 mandatory for both frontend and backend changes.
 
-Stack: Spring Boot 4.0.9 / Java 21, PostgreSQL 18 + Flyway, JPA/Hibernate, Spring Security
+Stack: Spring Boot 4.1.2 / Java 21, PostgreSQL 18 + Flyway, JPA/Hibernate, Spring Security
 (JWT in httpOnly cookies), Gradle. Frontend: React 19 + TypeScript + Vite.
 
 ---

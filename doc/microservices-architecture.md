@@ -27,7 +27,7 @@ Each service owns its schema and database credentials. A service must not query 
 
 ## Technology and shared code
 
-Services use Java 21 and Spring Boot 4.0.9. Spring Cloud 2025.1.4 is used for the Spring Cloud Gateway MVC adapter and is aligned with this Boot line. PostgreSQL 18 and Flyway are configured per service. The existing React frontend is retained as the UI.
+Services use Java 21 and Spring Boot 4.1.2. Spring Cloud 2025.1.4 is used for the Spring Cloud Gateway MVC adapter and is aligned with this Boot line. PostgreSQL 18 and Flyway are configured per service. The existing React frontend is retained as the UI.
 
 Avoid a shared library containing domain entities or repositories: it couples deployments and undermines service ownership. Share only stable, versioned wire contracts when there is a demonstrated need; events should be backward-compatible and independently versioned.
 
