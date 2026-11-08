@@ -1,5 +1,3 @@
-# Spring Microservices + React Boilerplate
-
 ![Stack Spring Boot MS — Spring microservices and React boilerplate](doc/header.png)
 
 A microservices-oriented evolution of the Spring + React boilerplate. It uses Java 21, Spring Boot 4.1.2, Spring Cloud Gateway MVC, PostgreSQL 18, and Docker Compose.
