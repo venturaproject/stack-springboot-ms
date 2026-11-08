@@ -1,0 +1,25 @@
+# Production profile: activate with SPRING_PROFILES_ACTIVE=prod. Set ADMIN_BOOTSTRAP_EMAIL
+# and ADMIN_BOOTSTRAP_PASSWORD only when the database has no users yet; never use the dev defaults.
+spring:
+  jpa:
+    open-in-view: false
+
+app:
+  cookie:
+    secure: ${COOKIE_SECURE:true}
+    same-site: ${COOKIE_SAME_SITE:Strict}
+
+logging:
+  structured:
+    format:
+      console: ${LOGGING_STRUCTURED_FORMAT_CONSOLE:ecs}
+  level:
+    root: INFO
+
+management:
+  endpoint:
+    health:
+      show-details: never
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_PROBABILITY:0.1}

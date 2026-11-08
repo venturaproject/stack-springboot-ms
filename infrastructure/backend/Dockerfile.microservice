@@ -1,0 +1,18 @@
+FROM gradle:8.14.3-jdk21-alpine AS build
+WORKDIR /workspace
+COPY . .
+ARG SERVICE_PATH
+WORKDIR /workspace/backend
+RUN gradle ":${SERVICE_PATH}:bootJar" --no-daemon --max-workers=1
+RUN SERVICE_DIR="$(printf '%s' "${SERVICE_PATH}" | tr ':' '/')" && \
+    find "${SERVICE_DIR}/build/libs" -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' -exec cp {} /workspace/service.jar \;
+
+FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache curl
+WORKDIR /app
+COPY --from=build /workspace/service.jar /app/service.jar
+USER 1000:1000
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=10 \
+    CMD curl -fsS "http://localhost:${PORT:-8080}/actuator/health/readiness" || exit 1
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/service.jar"]

@@ -1,0 +1,15 @@
+FROM eclipse-temurin:21-jdk-alpine
+
+RUN apk add --no-cache curl unzip bash postgresql-client && \
+    GRADLE_VERSION=8.14.3 && \
+    curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip && \
+    unzip -q /tmp/gradle.zip -d /opt/ && \
+    ln -s "/opt/gradle-${GRADLE_VERSION}/bin/gradle" /usr/local/bin/gradle && \
+    rm /tmp/gradle.zip && \
+    apk del curl unzip
+
+WORKDIR /app
+
+EXPOSE 8080
+
+CMD ["gradle", "bootRun", "--no-daemon", "-Pargs=--spring.profiles.active=dev"]

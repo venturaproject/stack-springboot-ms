@@ -1,0 +1,15 @@
+spring:
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    com.boilerplate: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+    org.springframework.security: DEBUG
+
+app:
+  bootstrap:
+    admin-email: ${ADMIN_BOOTSTRAP_EMAIL:admin@example.com}
+    admin-password: ${ADMIN_BOOTSTRAP_PASSWORD:admin123}

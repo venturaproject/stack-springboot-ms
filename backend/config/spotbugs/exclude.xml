@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+
+    <!-- Lombok generates equals/hashCode that SpotBugs flags incorrectly -->
+    <Match>
+        <Bug pattern="EQ_UNUSUAL"/>
+    </Match>
+
+    <!-- Lombok @Builder sets fields via reflection — not a real exposure -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- JPA entities need mutable fields and a no-arg constructor -->
+    <Match>
+        <Bug pattern="SE_NO_SERIALVERSIONID"/>
+    </Match>
+
+    <!-- Spring injects fields marked @Value/@Autowired after construction -->
+    <Match>
+        <Bug pattern="URF_UNREAD_FIELD"/>
+    </Match>
+
+    <!-- Spring Security intentionally returns null from some UserDetails methods -->
+    <Match>
+        <Class name="~.*\.domain\.auth\..*"/>
+        <Bug pattern="NP_NONNULL_RETURN_VIOLATION"/>
+    </Match>
+
+    <!-- DTOs use Map.of() whose return type SpotBugs may warn about -->
+    <Match>
+        <Class name="~.*\.infrastructure\.http\..*"/>
+        <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    </Match>
+
+    <!-- Asserting that a pure method throws (assertThatThrownBy(() -> vo.op())) legitimately
+         ignores the return value — only relevant in test sources. -->
+    <Match>
+        <Source name="~.*Test\.java"/>
+        <Bug pattern="RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT,RV_RETURN_VALUE_IGNORED_INFERRED"/>
+    </Match>
+
+</FindBugsFilter>

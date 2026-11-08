@@ -1,0 +1,162 @@
+spring:
+  application:
+    name: boilerplate-spring
+  # Kafka support is opt-in: activate the `kafka` profile (KafkaConfig builds the template).
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:boilerplate_spring}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    # Force explicit fetching: a lazy association touched outside a transaction is a bug,
+    # not something the view layer should silently paper over.
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        # Collapses lazy-collection N+1s into a handful of IN queries.
+        default_batch_fetch_size: 100
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+  threads:
+    virtual:
+      enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_GRACE:30s}
+
+server:
+  port: ${PORT:8080}
+  # Finish in-flight requests before the process exits (deploys, autoscaling).
+  shutdown: graceful
+
+app:
+  bootstrap:
+    admin-email: ${ADMIN_BOOTSTRAP_EMAIL:}
+    admin-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+  jwt:
+    secret: ${JWT_SECRET:change-me-in-production-minimum-32-characters}
+    access-ttl-secs: ${JWT_ACCESS_TTL_SECS:900}
+    refresh-ttl-secs: ${JWT_REFRESH_TTL_SECS:604800}
+  cookie:
+    secure: ${COOKIE_SECURE:false}
+    same-site: ${COOKIE_SAME_SITE:Lax}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  media:
+    dir: ${MEDIA_DIR:./media}
+  outbox:
+    poll-ms: ${OUTBOX_POLL_MS:2000}             # how often the relay drains staged domain events
+    max-attempts: ${OUTBOX_MAX_ATTEMPTS:10}     # then the row is dead-lettered (failed_at set)
+    backoff-base-ms: ${OUTBOX_BACKOFF_BASE_MS:1000}    # retry delay = base * 2^(attempts-1) ...
+    backoff-max-ms: ${OUTBOX_BACKOFF_MAX_MS:300000}    # ... capped here (5 min)
+    retention-days: ${OUTBOX_RETENTION_DAYS:30}        # published rows are purged after this
+  inbox:
+    retention-days: ${INBOX_RETENTION_DAYS:30}         # consumer dedupe rows are purged after this
+  saga:
+    recovery-after-minutes: ${SAGA_RECOVERY_AFTER_MINUTES:5}  # re-drive an instance stuck this long
+    retention-days: ${SAGA_RETENTION_DAYS:30}                 # finished instances are purged after this
+  security:
+    rate-limit:
+      capacity: ${LOGIN_RATE_CAPACITY:5}        # burst of login attempts per IP
+      refill-per-minute: ${LOGIN_RATE_REFILL:5}
+    lockout:
+      max-attempts: ${LOCKOUT_MAX_ATTEMPTS:5}
+      window-minutes: ${LOCKOUT_WINDOW_MINUTES:15}
+      lock-minutes: ${LOCKOUT_MINUTES:15}
+  cache:
+    ttl: ${CACHE_TTL:5m}                        # expire-after-write for every named cache
+    max-size: ${CACHE_MAX_SIZE:1000}            # entries per cache
+
+# Resilience for outbound calls. `payment-gateway` is the reference instance
+# (infrastructure.payments.ResilientPaymentGateway). Metrics: /actuator/prometheus resilience4j_*.
+resilience4j:
+  circuitbreaker:
+    instances:
+      payment-gateway:
+        sliding-window-type: count-based
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50               # % failures in the window that opens the breaker
+        wait-duration-in-open-state: ${PAYMENT_CB_OPEN_WAIT:20s}
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        # An open breaker shows in /actuator/health (not in the readiness group) — page a
+        # human, don't cycle the pod. Same stance as OutboxObservability.
+        register-health-indicator: true
+  retry:
+    instances:
+      payment-gateway:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        ignore-exceptions:
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException  # don't retry a fast-fail
+        # A real adapter also narrows retries to transient faults (IOException, 5xx, TimeoutException)
+        # via retry-exceptions, and ignores business declines that are modelled as exceptions.
+  bulkhead:
+    instances:
+      payment-gateway:
+        max-concurrent-calls: 25
+        max-wait-duration: 20ms
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true          # /actuator/health/liveness and /readiness for k8s
+      show-details: when_authorized
+      group:
+        readiness:
+          include: readinessState, db
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  observations:
+    key-values:
+      application: ${spring.application.name}
+  tracing:
+    # 0 = trace context (ids in logs) but nothing exported. Set to 0.1-1.0 and point
+    # management.otlp.tracing.endpoint at a collector to ship spans.
+    sampling:
+      probability: ${TRACING_SAMPLE_PROBABILITY:0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+  info:
+    env:
+      enabled: true
+    git:
+      mode: full
+
+logging:
+  # Trace/span ids on every line so a request can be followed across threads and the outbox.
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-}]"
+  # Set LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs (or logstash / gelf) in production for JSON logs.
+  structured:
+    format:
+      console: ${LOGGING_STRUCTURED_FORMAT_CONSOLE:}

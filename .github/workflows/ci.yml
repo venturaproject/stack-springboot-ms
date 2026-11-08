@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write   # Trivy uploads SARIF to the Security tab
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      # `./gradlew check` = tests + JaCoCo floor + ArchUnit + Checkstyle + SpotBugs + Error Prone/NullAway.
+      # Integration tests spin up PostgreSQL via Testcontainers (Docker is present on the runner).
+      - run: ./gradlew check cyclonedxBom --no-daemon
+        env:
+          JWT_SECRET: ci-secret-key-minimum-32-characters-long
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-sbom
+          path: backend/build/reports/bom.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: backend-reports
+          path: backend/build/reports/
+
+  services:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      # Compiles every extracted service and runs its shared ArchUnit architecture suite.
+      - run: ./gradlew buildServices --no-daemon --max-workers=1
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm run check:i18n
+      - run: pnpm run lint
+      - run: pnpm run test:run
+      - run: pnpm run build   # catches Rollup / manualChunks / import breakage
+      - name: Validate production Nginx template and security headers
+        run: |
+          docker run --rm \
+            -e BACKEND_HOST=127.0.0.1 -e BACKEND_PORT=8080 \
+            -v "$GITHUB_WORKSPACE/infrastructure/nginx/templates:/etc/nginx/templates:ro" \
+            -v "$GITHUB_WORKSPACE/infrastructure/nginx/snippets:/etc/nginx/snippets:ro" \
+            nginx:1.27-alpine sh -c 'envsubst '\''$BACKEND_HOST $BACKEND_PORT'\'' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -t'
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Scans the checked-out tree: Gradle + pnpm lockfiles for known-vulnerable versions,
+      # Dockerfiles for misconfig. Findings land in the repo Security tab.
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig,secret
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy.sarif
+          exit-code: '1'
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy.sarif

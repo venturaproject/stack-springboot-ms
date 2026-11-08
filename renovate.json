@@ -1,0 +1,50 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommitsDisabled",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "Europe/Madrid",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Group all non-major backend (Gradle) updates into one PR",
+      "matchManagers": ["gradle", "gradle-wrapper"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "gradle (non-major)"
+    },
+    {
+      "description": "Group all non-major frontend (pnpm) updates into one PR",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "frontend (non-major)"
+    },
+    {
+      "description": "Spring Boot and Spring Framework move together — review as a set",
+      "matchPackageNames": ["org.springframework.boot", "/^org\\.springframework($|\\.)/"],
+      "groupName": "spring"
+    },
+    {
+      "description": "Security-relevant libs: raise the PR immediately, don't wait for the schedule",
+      "matchPackageNames": [
+        "io.jsonwebtoken:{/,}**",
+        "org.bouncycastle:{/,}**",
+        "org.springframework.security:{/,}**"
+      ],
+      "schedule": ["at any time"],
+      "prPriority": 10
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  }
+}

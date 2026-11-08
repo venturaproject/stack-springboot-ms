@@ -1,0 +1,171 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: infrastructure/backend/Dockerfile.microservice
+      args:
+        SERVICE_PATH: services:gateway-service
+    environment:
+      IDENTITY_SERVICE_URL: http://identity-service:8101
+      CUSTOMER_SERVICE_URL: http://customer-service:8102
+      CATALOG_SERVICE_URL: http://catalog-service:8103
+      ORDER_SERVICE_URL: http://order-service:8104
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      - identity-service
+      - customer-service
+      - catalog-service
+      - order-service
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 10
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: infrastructure/backend/Dockerfile.microservice
+      args:
+        SERVICE_PATH: services:identity-service
+    environment:
+      PORT: 8101
+      DB_HOST: identity-db
+      DB_NAME: identity
+      DB_USER: ${IDENTITY_DB_USER:-identity}
+      DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity-local-only}
+    depends_on:
+      identity-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:$${PORT:-8101}/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 10
+
+  customer-service:
+    build:
+      context: .
+      dockerfile: infrastructure/backend/Dockerfile.microservice
+      args:
+        SERVICE_PATH: services:customer-service
+    environment:
+      PORT: 8102
+      DB_HOST: customer-db
+      DB_NAME: customers
+      DB_USER: ${CUSTOMER_DB_USER:-customers}
+      DB_PASSWORD: ${CUSTOMER_DB_PASSWORD:-customers-local-only}
+    depends_on:
+      customer-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:$${PORT:-8102}/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 10
+
+  catalog-service:
+    build:
+      context: .
+      dockerfile: infrastructure/backend/Dockerfile.microservice
+      args:
+        SERVICE_PATH: services:catalog-service
+    environment:
+      PORT: 8103
+      DB_HOST: catalog-db
+      DB_NAME: catalog
+      DB_USER: ${CATALOG_DB_USER:-catalog}
+      DB_PASSWORD: ${CATALOG_DB_PASSWORD:-catalog-local-only}
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:$${PORT:-8103}/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 10
+
+  order-service:
+    build:
+      context: .
+      dockerfile: infrastructure/backend/Dockerfile.microservice
+      args:
+        SERVICE_PATH: services:order-service
+    environment:
+      PORT: 8104
+      DB_HOST: order-db
+      DB_NAME: orders
+      DB_USER: ${ORDER_DB_USER:-orders}
+      DB_PASSWORD: ${ORDER_DB_PASSWORD:-orders-local-only}
+    depends_on:
+      order-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:$${PORT:-8104}/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 30s
+      retries: 10
+
+  identity-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: identity
+      POSTGRES_USER: ${IDENTITY_DB_USER:-identity}
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity-local-only}
+    volumes: [identity-data:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  customer-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: customers
+      POSTGRES_USER: ${CUSTOMER_DB_USER:-customers}
+      POSTGRES_PASSWORD: ${CUSTOMER_DB_PASSWORD:-customers-local-only}
+    volumes: [customer-data:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  catalog-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: catalog
+      POSTGRES_USER: ${CATALOG_DB_USER:-catalog}
+      POSTGRES_PASSWORD: ${CATALOG_DB_PASSWORD:-catalog-local-only}
+    volumes: [catalog-data:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  order-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: ${ORDER_DB_USER:-orders}
+      POSTGRES_PASSWORD: ${ORDER_DB_PASSWORD:-orders-local-only}
+    volumes: [order-data:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  identity-data:
+  customer-data:
+  catalog-data:
+  order-data:

@@ -1,0 +1,8 @@
+# The dev image (infrastructure/frontend/Dockerfile) builds with ./frontend as context.
+node_modules
+.pnpm-store
+dist
+coverage
+.env
+.env.local
+.git

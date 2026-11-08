@@ -1,0 +1,48 @@
+.env
+.env.local
+
+# Backend
+backend/build/
+backend/.gradle/
+backend/.idea/
+backend/*.iml
+backend/out/
+
+# Root build/cache artifacts (Java source and Gradle configuration live under backend/)
+.gradle/
+build/
+**/build/
+**/.gradle/
+
+# Frontend
+frontend/node_modules/
+frontend/.pnpm-store/
+/.pnpm-store/
+frontend/dist/
+frontend/coverage/
+frontend/.env
+frontend/.env.local
+frontend/node_modules/
+frontend/.pnpm-store/
+frontend/dist/
+frontend/coverage/
+
+# Docker
+compose.override.yml
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local runtime data and generated files
+backend/media/
+backend/hs_err_pid*.log
+**/__pycache__/
+*.py[cod]

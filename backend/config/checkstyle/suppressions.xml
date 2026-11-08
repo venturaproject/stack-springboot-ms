@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<suppressions>
+    <!-- Test methods and ArchUnit rule fields use snake_case by convention (JUnit 5). -->
+    <suppress checks="MethodName|ConstantName|MemberName|StaticVariableName"
+              files="[\\/]src[\\/]test[\\/]"/>
+</suppressions>
