@@ -1,0 +1,15 @@
+# pnpm 10+ build-script approvals (pnpm aborts install otherwise). esbuild fetches its
+# platform binary; msw copies its browser worker (unused by the Node test setup).
+allowBuilds:
+  esbuild: true
+  msw: true
+
+# Force transitive deps onto patched versions (nuqs still pulls an older react-router with
+# GHSA-84g9-w2xq-vcv6 / GHSA-cp6q...). Drop an entry once the upstream range catches up.
+overrides:
+  follow-redirects: ^1.16.2
+  react-router: "^7.18.3"
+  react-router-dom: "^7.18.3"
+  shell-quote: "^1.11.0"
+  source-map-js: "^1.2.2"
+  postcss-selector-parser: "^7.1.6"
