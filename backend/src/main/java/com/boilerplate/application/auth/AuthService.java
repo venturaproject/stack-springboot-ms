@@ -3,7 +3,6 @@ package com.boilerplate.application.auth;
 import com.boilerplate.config.AppProperties;
 import com.boilerplate.domain.auth.Email;
 import com.boilerplate.domain.auth.RefreshToken;
-import com.boilerplate.domain.auth.RefreshTokenRepository;
 import com.boilerplate.domain.auth.User;
 import com.boilerplate.domain.auth.UserRepository;
 import com.boilerplate.domain.exception.AuthenticationFailedException;
@@ -21,9 +20,9 @@ public class AuthService {
 
     private final CredentialsAuthenticator credentialsAuthenticator;
     private final UserRepository userRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
     private final CompromisedRefreshTokenHandler compromisedRefreshTokenHandler;
     private final AuthTokenIssuer tokenIssuer;
+    private final RefreshTokenDigester refreshTokenDigester;
     private final AppProperties appProperties;
 
     @Transactional
@@ -36,22 +35,25 @@ public class AuthService {
 
         String access = tokenIssuer.generateAccessToken(user);
         String refresh = tokenIssuer.generateRefreshToken(user);
-        refreshTokenRepository.save(RefreshToken.startFamily(refresh, user, refreshExpiry()));
+        user.startRefreshFamily(refreshTokenDigester.digest(refresh), refreshExpiry());
+        userRepository.save(user);
 
         return new LoginResult(UserResponse.from(user), tokens(access, refresh));
     }
 
     @Transactional
     public LoginResult refresh(String rawRefreshToken) {
-        RefreshToken presented = refreshTokenRepository
-                .findByToken(rawRefreshToken)
+        String tokenHash = refreshTokenDigester.digest(rawRefreshToken);
+        User user = userRepository
+                .findDetailedByRefreshTokenHash(tokenHash)
+                .orElseThrow(() -> new AuthenticationFailedException("Invalid refresh token"));
+        RefreshToken presented = user.refreshToken(tokenHash)
                 .orElseThrow(() -> new AuthenticationFailedException("Invalid refresh token"));
 
         if (presented.isRevoked()) {
             // A revoked token was replayed — assume the whole family leaked. The breach
             // response commits in its own transaction; this call still fails with 401.
-            compromisedRefreshTokenHandler.revokeFamilyAndFlagUser(
-                    presented.getFamilyId(), presented.getUser().getId());
+            compromisedRefreshTokenHandler.revokeFamilyAndFlagUser(presented.getFamilyId(), user.getId());
             log.warn("refresh-token reuse detected for family {}", presented.getFamilyId());
             throw new AuthenticationFailedException("Refresh token reuse detected");
         }
@@ -59,16 +61,30 @@ public class AuthService {
             throw new AuthenticationFailedException("Refresh token expired");
         }
 
-        User user = userRepository
-                .findDetailedById(presented.getUser().getId())
-                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+        if (!user.isActive() || user.isLocked()) {
+            throw new AuthenticationFailedException("Account is not available");
+        }
 
-        presented.revoke();
         String access = tokenIssuer.generateAccessToken(user);
         String refresh = tokenIssuer.generateRefreshToken(user);
-        refreshTokenRepository.save(presented.rotate(refresh, refreshExpiry()));
+        user.rotateRefreshToken(presented, refreshTokenDigester.digest(refresh), refreshExpiry());
+        userRepository.save(user);
 
         return new LoginResult(UserResponse.from(user), tokens(access, refresh));
+    }
+
+    @Transactional
+    public void logout(String rawRefreshToken) {
+        if (rawRefreshToken == null || rawRefreshToken.isBlank()) {
+            return;
+        }
+        String tokenHash = refreshTokenDigester.digest(rawRefreshToken);
+        userRepository.findDetailedByRefreshTokenHash(tokenHash).ifPresent(user -> {
+            user.refreshToken(tokenHash).ifPresent(token -> {
+                user.revokeRefreshFamily(token.getFamilyId());
+                userRepository.save(user);
+            });
+        });
     }
 
     private Instant refreshExpiry() {

@@ -82,10 +82,7 @@ public class DataInitializer implements ApplicationRunner {
                                 outboxManage))));
 
         if (roleRepository.findByName("USER").isEmpty()) {
-            roleRepository.save(Role.create(
-                    "USER",
-                    "Standard user role",
-                    Set.of(usersRead, productsRead, customersRead, ordersRead, ordersWrite)));
+            roleRepository.save(Role.create("USER", "Standard user role", Set.of(productsRead)));
         }
 
         if (userRepository.count() == 0) {

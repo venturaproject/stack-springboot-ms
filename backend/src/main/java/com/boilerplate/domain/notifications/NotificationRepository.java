@@ -12,7 +12,7 @@ import org.springframework.data.repository.query.Param;
 /** Persistence port for {@link Notification}. */
 public interface NotificationRepository extends Repository<Notification, UUID> {
 
-    Optional<Notification> findById(UUID id);
+    Optional<Notification> findByIdAndUserId(UUID id, UUID userId);
 
     @Query("SELECT n FROM Notification n WHERE n.userId = :userId OR n.userId IS NULL ORDER BY n.createdAt DESC")
     List<Notification> findVisibleTo(@Param("userId") UUID userId, Pageable pageable);

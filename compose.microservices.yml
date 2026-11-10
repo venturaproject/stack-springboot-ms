@@ -11,7 +11,9 @@ services:
       CATALOG_SERVICE_URL: http://catalog-service:8103
       ORDER_SERVICE_URL: http://order-service:8104
     ports:
-      - "${GATEWAY_PORT:-8080}:8080"
+      # The shells and routing-only gateway are not production-ready or authenticated.
+      # Keep local experimentation loopback-only until the service security boundary exists.
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
     depends_on:
       - identity-service
       - customer-service

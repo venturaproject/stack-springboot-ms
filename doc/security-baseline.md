@@ -25,15 +25,17 @@ There are two distinct runtime shapes; they are not yet security-equivalent:
    exposure.
 
 Current controls in the monolith include Argon2 password hashing; short-lived access JWTs
-and opaque, rotated refresh tokens; `HttpOnly` cookies; lockout and per-process login rate
-limiting; method-level authorization; security response headers; and a production
-configuration validator. These controls are not proof that every API path or deployment is
-safe: retain their tests and verify the edge/deployment configuration too.
+and opaque, rotated refresh tokens; `HttpOnly` cookies; account/network rate limiting;
+method-level authorization; security response headers; and a production configuration
+validator. These controls are not proof that every API path or deployment is safe: retain
+their tests and verify the edge/deployment configuration too.
 
-One major gap remains: the extracted Gateway is routing-only with no
-authentication/authorization filter. Routing is not authorization. The production Nginx
-template now adds security headers to static SPA/media responses, and CI validates its
-rendered configuration.
+The extracted Gateway still has no identity/JWT authorization integration. It now fails
+closed (business routes return 403; only health probes are public), and its development
+Compose port is bound to loopback only. Do not expose it on a network or enable API routes
+until the documented identity trust boundary is implemented. The production Nginx template
+adds security headers to static SPA/media responses, disables the public Swagger proxy, and
+CI validates its rendered configuration.
 
 The frontend defaults to `SpringHttpOnlyAdapter`, aligned with the monolith's login, current
 user, refresh, and logout routes. Spring user responses include roles and permissions for
@@ -76,9 +78,17 @@ exposure.
 - Keep internal-user and external-client authentication paths separate. External client
   credentials are scoped, revocable, stored as non-recoverable hashes where applicable,
   and returned only once at issuance.
-- The monolith's rate limiter and account lockout are per-process, not cluster-wide.
-  Distributed deployments must use a shared limiter/store before claiming a global limit.
-  Generic authentication failures must avoid account enumeration.
+- Login throttling has both network and account keys. The default-development limiter is
+  per-process; the `distributed-rate-limit` profile uses a Redis atomic token bucket shared
+  across instances, and the `prod` profile refuses startup unless that profile is active.
+  Production must configure a non-local Redis endpoint, isolate the limiter keyspace, and
+  use a bounded Redis instance with `noeviction` so memory pressure fails closed rather than
+  silently resetting buckets. The in-memory fallback has a bounded key map and fails closed
+  at capacity. Automatic
+  account-wide lockout was removed because unauthenticated users could deliberately lock
+  out a victim; existing temporary lock timestamps are still honored until their expiry,
+  and no user data is cleared or migrated for this change. Generic authentication failures
+  must avoid account enumeration.
 
 ## 3. Browser, HTTP, and API boundaries
 
@@ -100,10 +110,10 @@ exposure.
   Use parameterized queries; never build SQL/JPQL from untrusted string concatenation.
 - Return stable problem responses without stack traces, SQL, filesystem paths, secrets, or
   internal topology. Include a correlation/trace identifier, not sensitive context.
-- The monolith exposes selected Actuator health/info/Prometheus and OpenAPI/Swagger paths;
-  the production Nginx template also proxies Swagger paths. Keep these endpoints minimal
-  and restrict them at the edge/network or require authentication if they are not intended
-  to be public. The microservice shells expose health/info/Prometheus internally; do not
+- Development exposes selected Actuator health/info/Prometheus and OpenAPI/Swagger paths
+  for local use. In the `prod` profile, only health is exposed, OpenAPI/Swagger are disabled,
+  and the production Nginx template does not proxy Swagger paths. Keep management endpoints
+  network-internal. The microservice shells expose health/info/Prometheus internally; do not
   publish them without a reviewed need.
 - Configure upload size/type limits, validate actual content (not only file extensions or
   client MIME types), generate storage names, and prevent path traversal. Do not serve
@@ -155,8 +165,9 @@ exposure.
   names/placeholders only; real `.env` files stay ignored. Current Compose files have
   development-only database password defaults for microservices; never reuse them outside
   local development. The monolith also has development defaults in `application.yml`; only
-  its `prod` profile validator is a fail-fast safeguard, so production must activate `prod`
-  and provide explicit secrets.
+  its `prod` profile validator is a fail-fast safeguard, so production must activate
+  `prod,distributed-rate-limit`, provide explicit secrets and configure
+  `SPRING_DATA_REDIS_URL` or `SPRING_DATA_REDIS_HOST` to a non-local managed Redis endpoint.
 - Production startup must fail for missing/weak signing keys, insecure cookies, unsafe CORS,
   development credentials, or other explicitly unsafe settings. Keys must be randomly
   generated, sufficiently strong, rotatable, and different per environment.

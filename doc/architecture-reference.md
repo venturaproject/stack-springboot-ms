@@ -48,7 +48,8 @@ com.boilerplate
 │   ├── http/AuthCookieWriter    # turns application IssuedTokens into httpOnly cookies
 │   ├── security/                # JwtService (AuthTokenIssuer), SecurityUser (UserDetails adapter),
 │   │                            #   SpringPasswordHasher, SpringCredentialsAuthenticator, DataInitializer
-│   ├── security/                #   + LoginAttemptListener (lockout), JwtService (opaque refresh tokens)
+│   ├── security/                #   + AuthenticationSuccessListener, rate-limit adapters,
+│   │                            #     JwtService (opaque refresh tokens)
 │   ├── storage/                 # LocalMediaStorage — the MediaStoragePort adapter
 │   ├── outbox/                  # OutboxWriter (BEFORE_COMMIT), OutboxRelay (@Scheduled, backoff+DLQ),
 │   │                            #   OutboxMaintenance (retention, @SchedulerLock), OutboxAdminService (replay),
@@ -62,7 +63,7 @@ com.boilerplate
 │   ├── payments/                # PaymentGatewayPort: InMemoryPaymentGateway (adapter) +
 │   │                            #   ResilientPaymentGateway (@Primary: retry/circuit-breaker/bulkhead)
 │   ├── cache/                   # DashboardCacheEvictor — AFTER_COMMIT event-driven @Cacheable eviction
-│   ├── http/middleware/         #   + RateLimitFilter (per-IP token bucket on login)
+│   ├── http/middleware/         #   + RateLimitFilter (network-key login throttling)
 │   └── console/                 # `--spring.profiles.active=cli` commands
 └── config/                      # @Configuration, @ConfigurationProperties, bean wiring
                                  #   SchedulingConfig (+ShedLock), JpaAuditingConfig, CacheConfig,
@@ -146,19 +147,28 @@ closed:
    (infrastructure) writes the cookies.
 8. **Fetching** — `open-in-view: false`, all `@ManyToMany` are `LAZY`, auth queries use
    `@EntityGraph`, and `hibernate.default_batch_fetch_size` collapses list N+1s.
+9. **Refresh sessions belong to the User aggregate.** `RefreshToken` is a child entity
+   persisted through `UserRepository`; session creation, rotation, family revocation, and
+   account-wide revocation are intention-revealing `User` operations. There is no standalone
+   refresh-token repository that bypasses aggregate ownership. Token hashing remains an
+   application outbound port with an infrastructure adapter.
+10. **Rate limiting is an outbound security capability.** The application defines
+    `LoginRateLimiter`; the infrastructure adapter uses a bounded in-memory token bucket for
+    local development or an atomic Redis script for distributed deployments. HTTP middleware
+    supplies the network key, while the authentication adapter supplies the account key.
 
-9. **Frontend contract.** `services/*-api.ts` types mirror the `*Response` records
+11. **Frontend contract.** `services/*-api.ts` types mirror the `*Response` records
    field-for-field; `Paginated<T>` in `lib/api-utils.ts` mirrors `PagedResponse`. No
    `normalize*` translation layer — list params are `page` / `size`. Endpoints that
    return a full collection (`/api/roles`, `/api/permissions`) are consumed as plain
    arrays; those screens are read-only, matching the backend.
-10. **Command/query dispatch.** `CommandBus` / `QueryBus` are typed application ports.
+12. **Command/query dispatch.** `CommandBus` / `QueryBus` are typed application ports.
     Each handler declares its request type; the Spring adapters resolve exactly one handler
     per request and fail at startup if duplicate registrations exist. Handler methods own
     their transaction boundaries. Product creation and product list/detail are the worked
     migration example; remaining grouped services can move incrementally without changing
     domain contracts or HTTP payloads.
-11. **Frontend routing.** Route paths are plain strings on React Router — there is no
+13. **Frontend routing.** Route paths are plain strings on React Router — there is no
     `pathFor()` / route-name registry. The only route file is `app-routes.tsx`.
 
 ---
@@ -494,14 +504,17 @@ application services.
   token means it leaked → `AuthService` revokes the whole family, records a
   `RefreshTokenReused` domain event, and returns 401. The breach response runs in
   `REQUIRES_NEW` (`CompromisedRefreshTokenHandler`) so it commits despite the 401.
-- **Login rate limiting**: `RateLimitFilter` — per-IP token bucket (`TokenBucket`, no
-  dependency) on `/api/auth/login` and `/api/ext/auth/token`, ahead of the security chain.
-  Exceeded → 429 + `Retry-After`. Config: `app.security.rate-limit.*`.
-- **Account lockout**: `LoginAttemptListener` turns Spring Security's auth events into
-  counters on `User`; after `app.security.lockout.max-attempts` failures in the window the
-  account locks for `lock-minutes` and a `UserLocked` event is recorded.
-  `SecurityUser.isAccountNonLocked()` enforces it. A locked account and a bad password both
-  return 401 — no enumeration.
+- **Login rate limiting**: `RateLimitFilter` applies a network-key bucket to
+  `/api/auth/login` and `/api/ext/auth/token`; `SpringCredentialsAuthenticator` also applies
+  an account-key bucket before password verification. Both use the `LoginRateLimiter` port.
+  Local development uses a bounded in-memory adapter; production requires the atomic Redis
+  adapter via `distributed-rate-limit`. Exceeded network requests return 429; account bucket
+  failures remain generic 401s and do not invoke password hashing.
+- **Account lockout**: new account-wide lockouts are intentionally disabled because an
+  unauthenticated attacker could lock out a victim. The account-key bucket throttles retries
+  without disabling the account. Previously stored, temporary `locked_until` values are
+  still honored until expiry; their data is not cleared by deployment. A successful login
+  resets legacy failure counters.
 - **Response headers**: `SecurityConfig.securityHeaders()` sets a Content-Security-Policy,
   `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY` and HSTS (1 year, `includeSubDomains`
   — only meaningful over HTTPS) on both chains.
@@ -545,8 +558,9 @@ Actuator + Micrometer + OpenTelemetry, wired but quiet by default.
 - **Profiles.** `dev` (verbose logging, sample data) and `prod` (`application-prod.yml`:
   secure `Strict` cookies, JSON logs, `health` details hidden, 10 % trace sampling).
   `ProductionConfigValidator` (`@Profile("prod")`) **refuses to start** if `JWT_SECRET` is
-  the dev default or < 32 chars, `COOKIE_SECURE` is false, or `CORS_ALLOWED_ORIGINS` still
-  points at localhost. A deploy that never starts beats one running with a known key.
+  the dev default or < 32 chars, `COOKIE_SECURE` is false, CORS still points at localhost,
+  the distributed rate-limit profile is absent, or Redis is missing/local. A deploy that
+  never starts beats one running with an unsafe security configuration.
 - **Secrets** are environment variables only (`.env.example` is the manifest; `.env` is
   git-ignored). Nothing sensitive has a usable default in `application.yml`.
 - **Every `@Scheduled` job fires on every instance.** The outbox relay is fine with that —
@@ -555,11 +569,11 @@ Actuator + Micrometer + OpenTelemetry, wired but quiet by default.
   (ShedLock, `shedlock` table, `SchedulingConfig`) so exactly one instance runs each tick.
 - **`server.shutdown: graceful`** + `spring.lifecycle.timeout-per-shutdown-phase` — in-flight
   requests and a running relay batch finish before the process exits.
-- **Known single-instance assumptions** (fine for one node, revisit when you scale out):
-  `RateLimitFilter` / `TokenBucket` counts are per-instance (effective limit ×
-  replicas — move to Redis/bucket4j for a hard global limit); `JwtAuthFilter` does a
-  `findDetailedById` per request (immediate revocation, at the cost of a hot query — cache
-  with a short TTL, or carry authorities in the token, if it shows up in profiles).
+- **Known scaling trade-offs**: local development uses an in-memory login limiter, but
+  production requires `distributed-rate-limit` and a non-local Redis endpoint; the Redis
+  adapter shares atomic buckets across instances. `JwtAuthFilter` does a `findDetailedById`
+  per request (immediate revocation, at the cost of a hot query — cache with a short TTL, or
+  carry authorities in the token, if it shows up in profiles).
 - **Optimistic locking.** Every event-emitting aggregate root has a `@Version` column
   (`AbstractAggregateRoot`). A stale write throws `OptimisticLockingFailureException` → 409
   — this is what stops the fulfillment saga (background thread) and a user request from

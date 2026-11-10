@@ -33,7 +33,7 @@ Avoid a shared library containing domain entities or repositories: it couples de
 
 ## Current status and extraction sequence
 
-The service modules are bootable application shells with independent build files, configuration, and database connections. Business code and the security controls implemented by the monolith have **not yet been fully moved** into these services. The Gateway currently routes paths; it is not an authentication or authorization boundary. The compose file `compose.microservices.yml` starts the four service databases and builds the service shells. Compose readiness checks indicate that a process (and its database for business services) is ready to respond; they do not indicate feature parity, secure authorization, or production readiness. See the [Security Baseline](security-baseline.md) before exposing either runtime shape.
+The service modules are bootable application shells with independent build files, configuration, and database connections. Business code and the security controls implemented by the monolith have **not yet been fully moved** into these services. The Gateway currently routes paths but has no identity/JWT integration; its security chain therefore denies every business route and allows health probes only. Do not remove this fail-closed behavior or expose the Gateway until the documented identity trust boundary, per-service authorization, and negative contract tests exist. The compose file `compose.microservices.yml` starts the four service databases and builds the service shells. Compose readiness checks indicate that a process (and its database for business services) is ready to respond; they do not indicate feature parity, secure authorization, or production readiness. See the [Security Baseline](security-baseline.md) before exposing either runtime shape.
 
 Recommended extraction order:
 
@@ -59,7 +59,13 @@ Start the microservices development stack:
 docker compose -f compose.microservices.yml up --build
 ```
 
-The gateway listens on `http://localhost:8080`; each service exposes Actuator health internally. Local database passwords in the Compose file are development-only. Set environment overrides before using any shared or production environment.
+The gateway listens on `http://localhost:8080` bound to loopback only; it denies all business
+routes until an authentication and authorization boundary is implemented and must not be
+exposed on a network. Each service
+exposes Actuator health internally. Local database passwords in the Compose file are
+development-only. Set environment overrides before using any shared or production
+environment. Loopback binding is defense-in-depth for local development, not a production
+security boundary.
 
 ## Architecture principles
 

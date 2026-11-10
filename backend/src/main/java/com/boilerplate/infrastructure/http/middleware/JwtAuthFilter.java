@@ -40,13 +40,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                 if ("access".equals(tokenType)
                         && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    userRepository.findDetailedById(userId).ifPresent(user -> {
-                        SecurityUser principal = new SecurityUser(user);
-                        var authToken =
-                                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
-                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                        SecurityContextHolder.getContext().setAuthentication(authToken);
-                    });
+                    userRepository
+                            .findDetailedById(userId)
+                            .filter(user -> user.isActive() && !user.isLocked())
+                            .ifPresent(user -> {
+                                SecurityUser principal = new SecurityUser(user);
+                                var authToken = new UsernamePasswordAuthenticationToken(
+                                        principal, null, principal.getAuthorities());
+                                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                                SecurityContextHolder.getContext().setAuthentication(authToken);
+                            });
                 }
             } catch (Exception e) {
                 log.trace("Invalid JWT token, skipping authentication: {}", e.getMessage());

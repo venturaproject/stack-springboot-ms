@@ -22,9 +22,9 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markRead(UUID id) {
+    public void markRead(UUID id, UUID userId) {
         Notification notification = notificationRepository
-                .findById(id)
+                .findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Notification not found: " + id));
         notification.markRead();
         notificationRepository.save(notification);
@@ -36,9 +36,9 @@ public class NotificationService {
     }
 
     @Transactional
-    public void delete(UUID id) {
+    public void delete(UUID id, UUID userId) {
         Notification notification = notificationRepository
-                .findById(id)
+                .findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new EntityNotFoundException("Notification not found: " + id));
         notificationRepository.delete(notification);
     }

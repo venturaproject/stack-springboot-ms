@@ -45,7 +45,7 @@ class RefreshTokenTest {
         RefreshToken first = fresh();
         RefreshToken next = first.rotate("tok2", Instant.now().plusSeconds(60));
         assertThat(next.getFamilyId()).isEqualTo(first.getFamilyId());
-        assertThat(next.getToken()).isEqualTo("tok2");
+        assertThat(next.getTokenHash()).isEqualTo("tok2");
         assertThat(next.isRevoked()).isFalse();
     }
 

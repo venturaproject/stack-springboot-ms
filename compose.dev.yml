@@ -1,4 +1,13 @@
 services:
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   postgres:
     image: postgres:18-alpine
     environment:
@@ -36,6 +45,8 @@ services:
       PORT: 8080
       MEDIA_DIR: /app/media
       SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
       # Lets the Testcontainers-based integration tests talk to the host Docker daemon
       # (the socket is bind-mounted below) and reach the containers they spawn.
       TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
@@ -47,8 +58,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 5m
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   frontend:
@@ -76,8 +95,10 @@ services:
     volumes:
       - ./backend/media:/srv/media:ro
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:

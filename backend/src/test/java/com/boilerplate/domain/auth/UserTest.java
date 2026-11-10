@@ -4,8 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.boilerplate.domain.auth.event.RefreshTokenReused;
-import com.boilerplate.domain.auth.event.UserLocked;
-import java.time.Duration;
+import java.time.Instant;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -63,32 +62,8 @@ class UserTest {
     }
 
     @Test
-    void locks_after_the_configured_number_of_failed_logins_and_emits_UserLocked() {
-        User u = newUser();
-        Duration window = Duration.ofMinutes(15);
-        Duration lock = Duration.ofMinutes(15);
-
-        for (int i = 0; i < 4; i++) {
-            u.recordFailedLogin(5, window, lock);
-        }
-        assertThat(u.isLocked()).isFalse();
-
-        u.recordFailedLogin(5, window, lock); // 5th
-
-        assertThat(u.isLocked()).isTrue();
-        assertThat(u.getFailedLoginAttempts()).isZero(); // counter reset on lock
-        assertThat(u.recordedEvents())
-                .filteredOn(e -> e instanceof UserLocked)
-                .singleElement()
-                .isInstanceOfSatisfying(
-                        UserLocked.class, e -> assertThat(e.userId()).isEqualTo(u.getId()));
-    }
-
-    @Test
     void a_successful_login_resets_the_failure_counter() {
         User u = newUser();
-        u.recordFailedLogin(5, Duration.ofMinutes(15), Duration.ofMinutes(15));
-        u.recordFailedLogin(5, Duration.ofMinutes(15), Duration.ofMinutes(15));
         u.recordSuccessfulLogin();
         assertThat(u.getFailedLoginAttempts()).isZero();
     }
@@ -98,5 +73,39 @@ class UserTest {
         User u = newUser();
         u.reportRefreshTokenReuse();
         assertThat(u.recordedEvents()).singleElement().isInstanceOf(RefreshTokenReused.class);
+    }
+
+    @Test
+    void refresh_token_rotation_and_revocation_stay_inside_the_user_aggregate() {
+        User u = newUser();
+        RefreshToken first = u.startRefreshFamily("hash-1", Instant.now().plusSeconds(60));
+
+        RefreshToken next = u.rotateRefreshToken(first, "hash-2", Instant.now().plusSeconds(60));
+        u.revokeRefreshFamily(first.getFamilyId());
+
+        assertThat(first.isRevoked()).isTrue();
+        assertThat(next.isRevoked()).isTrue();
+        assertThat(u.refreshToken("hash-2")).contains(next);
+    }
+
+    @Test
+    void a_user_cannot_rotate_another_users_refresh_token() {
+        User owner = newUser();
+        User other = User.register(new Email("other@example.com"), HASH, "Other", "User", Set.of());
+        RefreshToken token = owner.startRefreshFamily("hash-1", Instant.now().plusSeconds(60));
+
+        assertThatThrownBy(() ->
+                        other.rotateRefreshToken(token, "hash-2", Instant.now().plusSeconds(60)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void deactivation_revokes_all_sessions() {
+        User deactivated = newUser();
+        RefreshToken deactivatedSession =
+                deactivated.startRefreshFamily("deactivate", Instant.now().plusSeconds(60));
+        deactivated.deactivate();
+
+        assertThat(deactivatedSession.isRevoked()).isTrue();
     }
 }

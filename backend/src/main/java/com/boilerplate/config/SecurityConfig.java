@@ -74,19 +74,19 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .headers(securityHeaders())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(
-                        auth -> auth.requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/csrf")
-                                .permitAll()
-                                .requestMatchers("/api/health")
-                                .permitAll()
-                                .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html")
-                                .permitAll()
-                                // Liveness/readiness probes and the Prometheus scrape are unauthenticated;
-                                // restrict them at the network layer (or add auth) if the port is public.
-                                .requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus")
-                                .permitAll()
-                                .anyRequest()
-                                .authenticated())
+                .authorizeHttpRequests(auth -> auth.requestMatchers(
+                                "/api/auth/login", "/api/auth/refresh", "/api/auth/csrf", "/api/auth/logout")
+                        .permitAll()
+                        .requestMatchers("/api/health")
+                        .permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html")
+                        .permitAll()
+                        // Health probes are public for orchestration; all other management
+                        // endpoints require authentication and should remain network-internal.
+                        .requestMatchers("/actuator/health/**")
+                        .permitAll()
+                        .anyRequest()
+                        .authenticated())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(problemDetailSecurityHandler)
                         .accessDeniedHandler(problemDetailSecurityHandler))
                 .authenticationProvider(authenticationProvider())
@@ -129,7 +129,7 @@ public class SecurityConfig {
         return config.getAuthenticationManager();
     }
 
-    /** Makes the AuthenticationManager fire success/failure events — the login-lockout listener needs them. */
+    /** Publishes authentication success events so legacy failure counters can be reset. */
     @Bean
     public AuthenticationEventPublisher authenticationEventPublisher(ApplicationEventPublisher publisher) {
         return new DefaultAuthenticationEventPublisher(publisher);

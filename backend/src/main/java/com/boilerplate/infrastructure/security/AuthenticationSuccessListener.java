@@ -1,41 +1,22 @@
 package com.boilerplate.infrastructure.security;
 
-import com.boilerplate.config.AppProperties;
 import com.boilerplate.domain.auth.Email;
 import com.boilerplate.domain.auth.UserRepository;
-import java.time.Duration;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.event.AbstractAuthenticationEvent;
-import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
 import org.springframework.security.authentication.event.AuthenticationSuccessEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Translates Spring Security's authentication events into the account-lockout counters on
- * {@link com.boilerplate.domain.auth.User}. Runs in its own transaction so the counter
- * survives the rollback of the failed login.
- */
+/** Resets legacy failed-login counters after a successful authentication. */
 @Component
 @RequiredArgsConstructor
-class LoginAttemptListener {
+class AuthenticationSuccessListener {
 
     private final UserRepository userRepository;
-    private final AppProperties appProperties;
-
-    @EventListener
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void onBadCredentials(AuthenticationFailureBadCredentialsEvent event) {
-        emailOf(event).flatMap(userRepository::findByEmail).ifPresent(user -> {
-            AppProperties.Security.Lockout cfg = appProperties.security().lockout();
-            user.recordFailedLogin(
-                    cfg.maxAttempts(), Duration.ofMinutes(cfg.windowMinutes()), Duration.ofMinutes(cfg.lockMinutes()));
-            userRepository.save(user);
-        });
-    }
 
     @EventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)

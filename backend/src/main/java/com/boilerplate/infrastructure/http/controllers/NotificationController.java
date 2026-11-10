@@ -47,8 +47,8 @@ public class NotificationController {
     }
 
     @PatchMapping("/{id}/read")
-    public ResponseEntity<Void> markRead(@PathVariable UUID id) {
-        notificationService.markRead(id);
+    public ResponseEntity<Void> markRead(@PathVariable UUID id, @AuthenticationPrincipal SecurityUser principal) {
+        notificationService.markRead(id, principal.id());
         return ResponseEntity.noContent().build();
     }
 
@@ -59,8 +59,8 @@ public class NotificationController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        notificationService.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable UUID id, @AuthenticationPrincipal SecurityUser principal) {
+        notificationService.delete(id, principal.id());
         return ResponseEntity.noContent().build();
     }
 

@@ -48,21 +48,21 @@ public class UserController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('users:write')")
+    @PreAuthorize("hasAuthority('users:write') and hasAuthority('roles:write')")
     @Operation(summary = "Create a new user")
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserCommand command) {
         return ResponseEntity.status(HttpStatus.CREATED).body(userService.create(command));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('users:write')")
+    @PreAuthorize("hasAuthority('users:write') and hasAuthority('roles:write')")
     @Operation(summary = "Update a user")
     public ResponseEntity<UserResponse> update(@PathVariable UUID id, @Valid @RequestBody UpdateUserCommand command) {
         return ResponseEntity.ok(userService.update(id, command));
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAuthority('users:write')")
+    @PreAuthorize("hasAuthority('users:write') and hasAuthority('roles:write')")
     public ResponseEntity<UserResponse> patch(@PathVariable UUID id, @Valid @RequestBody UpdateUserCommand command) {
         return ResponseEntity.ok(userService.update(id, command));
     }

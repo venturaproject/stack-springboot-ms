@@ -5,7 +5,9 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Persistence port for the {@link User} aggregate. Extends the minimal Spring Data
@@ -24,6 +26,11 @@ public interface UserRepository extends Repository<User, UUID> {
 
     @EntityGraph(attributePaths = {"roles", "roles.permissions"})
     Optional<User> findDetailedById(UUID id);
+
+    /** Loads the owning aggregate and its session children for token validation/rotation. */
+    @EntityGraph(attributePaths = {"roles", "roles.permissions", "refreshTokens"})
+    @Query("select u from User u join u.refreshTokens rt where rt.tokenHash = :tokenHash")
+    Optional<User> findDetailedByRefreshTokenHash(@Param("tokenHash") String tokenHash);
 
     boolean existsByEmail(Email email);
 

@@ -3,7 +3,6 @@ package com.boilerplate.domain.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.boilerplate.support.AbstractRepositoryIT;
-import java.time.Instant;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,17 +41,5 @@ class UserRepositoryIT extends AbstractRepositoryIT {
         assertThat(userRepository.existsByEmail(new Email("exists@example.com")))
                 .isTrue();
         assertThat(userRepository.existsByEmail(new Email("nope@example.com"))).isFalse();
-    }
-
-    @Test
-    void the_lockout_columns_round_trip() {
-        Email email = new Email("locked@example.com");
-        User user = User.register(email, new HashedPassword("$argon2id$x"), "L", "U", Set.of());
-        user.recordFailedLogin(1, java.time.Duration.ofMinutes(15), java.time.Duration.ofMinutes(15));
-        userRepository.save(user);
-
-        User reloaded = userRepository.findByEmail(email).orElseThrow();
-        assertThat(reloaded.isLocked()).isTrue();
-        assertThat(reloaded.getLockedUntil()).isAfter(Instant.now());
     }
 }

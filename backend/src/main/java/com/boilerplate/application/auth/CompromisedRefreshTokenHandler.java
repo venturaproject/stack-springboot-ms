@@ -1,6 +1,5 @@
 package com.boilerplate.application.auth;
 
-import com.boilerplate.domain.auth.RefreshTokenRepository;
 import com.boilerplate.domain.auth.UserRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -17,13 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 class CompromisedRefreshTokenHandler {
 
-    private final RefreshTokenRepository refreshTokenRepository;
     private final UserRepository userRepository;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     void revokeFamilyAndFlagUser(UUID familyId, UUID userId) {
-        refreshTokenRepository.revokeFamily(familyId);
-        userRepository.findById(userId).ifPresent(user -> {
+        userRepository.findDetailedById(userId).ifPresent(user -> {
+            user.revokeRefreshFamily(familyId);
             user.reportRefreshTokenReuse();
             userRepository.save(user);
         });

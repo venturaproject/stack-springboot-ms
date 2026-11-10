@@ -17,7 +17,8 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 /**
- * A refresh token belonging to a rotation <em>family</em>. A login starts a family; each
+ * A refresh token child entity belonging to the {@link User} aggregate and a rotation
+ * <em>family</em>. A login starts a family; each
  * refresh revokes the presented token and issues its successor in the same family.
  * Presenting an already-revoked token means it leaked — {@code AuthService} then revokes
  * the whole family.
@@ -33,8 +34,8 @@ public class RefreshToken {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, unique = true)
-    private String token;
+    @Column(name = "token_hash", nullable = false, unique = true)
+    private String tokenHash;
 
     @Column(name = "family_id", nullable = false)
     private UUID familyId;
@@ -53,8 +54,8 @@ public class RefreshToken {
     @Column(updatable = false)
     private Instant createdAt;
 
-    private RefreshToken(String token, User user, Instant expiresAt, UUID familyId) {
-        this.token = token;
+    private RefreshToken(String tokenHash, User user, Instant expiresAt, UUID familyId) {
+        this.tokenHash = tokenHash;
         this.user = user;
         this.expiresAt = expiresAt;
         this.familyId = familyId;
@@ -62,15 +63,15 @@ public class RefreshToken {
     }
 
     /** First token of a new session. */
-    public static RefreshToken startFamily(String token, User user, Instant expiresAt) {
-        require(token, user);
-        return new RefreshToken(token, user, expiresAt, UUID.randomUUID());
+    public static RefreshToken startFamily(String tokenHash, User user, Instant expiresAt) {
+        require(tokenHash, user);
+        return new RefreshToken(tokenHash, user, expiresAt, UUID.randomUUID());
     }
 
     /** Successor token in this token's family. The caller revokes {@code this}. */
-    public RefreshToken rotate(String newToken, Instant expiresAt) {
-        require(newToken, user);
-        return new RefreshToken(newToken, user, expiresAt, familyId);
+    public RefreshToken rotate(String newTokenHash, Instant expiresAt) {
+        require(newTokenHash, user);
+        return new RefreshToken(newTokenHash, user, expiresAt, familyId);
     }
 
     public void revoke() {

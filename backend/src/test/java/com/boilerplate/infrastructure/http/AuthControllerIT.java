@@ -9,7 +9,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.boilerplate.application.auth.RefreshTokenDigester;
+import com.boilerplate.domain.auth.UserRepository;
 import com.boilerplate.support.AbstractIntegrationIT;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -19,6 +22,12 @@ class AuthControllerIT extends AbstractIntegrationIT {
 
     @Autowired
     MockMvc mvc;
+
+    @Autowired
+    RefreshTokenDigester refreshTokenDigester;
+
+    @Autowired
+    UserRepository userRepository;
 
     private static final String LOGIN = "/api/auth/login";
 
@@ -76,5 +85,28 @@ class AuthControllerIT extends AbstractIntegrationIT {
                         .content("{\"email\":\"x@example.com\",\"password\":\"x\"}"))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"));
+    }
+
+    @Test
+    void logout_revokes_the_server_side_refresh_family() throws Exception {
+        var login = mvc.perform(withCsrf(mvc, post(LOGIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"admin@example.com\",\"password\":\"admin123\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshCookie = login.getResponse().getCookie("refresh_token");
+        org.junit.jupiter.api.Assertions.assertNotNull(refreshCookie);
+
+        mvc.perform(withCsrf(mvc, post("/api/auth/logout")).cookie(refreshCookie))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge("refresh_token", 0));
+
+        var persisted = userRepository
+                .findDetailedByRefreshTokenHash(refreshTokenDigester.digest(refreshCookie.getValue()))
+                .orElseThrow();
+        org.junit.jupiter.api.Assertions.assertTrue(persisted
+                .refreshToken(refreshTokenDigester.digest(refreshCookie.getValue()))
+                .orElseThrow()
+                .isRevoked());
     }
 }

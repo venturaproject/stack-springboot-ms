@@ -30,12 +30,15 @@ public record AppProperties(
      */
     public record Saga(int recoveryAfterMinutes, int retentionDays) {}
 
-    public record Security(RateLimit rateLimit, Lockout lockout) {
+    public record Security(RateLimit rateLimit) {
 
         /** Token-bucket per client IP on the login endpoints. */
-        public record RateLimit(int capacity, int refillPerMinute) {}
-
-        /** Lock an account after {@code maxAttempts} failures within {@code windowMinutes}. */
-        public record Lockout(int maxAttempts, long windowMinutes, long lockMinutes) {}
+        public record RateLimit(int capacity, int refillPerMinute) {
+            public RateLimit {
+                if (capacity < 1 || refillPerMinute < 1) {
+                    throw new IllegalArgumentException("Login rate-limit capacity and refill must be positive");
+                }
+            }
+        }
     }
 }

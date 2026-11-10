@@ -77,11 +77,23 @@ export const useAuthStore = create<AuthState>()((set, get) => {
 
     hydrate: async () => {
       if (get().initialized) return
-      await _fetchAndSet()
+      try {
+        await _fetchAndSet()
+      } catch {
+        // A transient backend/proxy failure must not leave route guards on the
+        // hydration spinner forever. Treat the initial state as signed out so
+        // the login screen can render; a later login attempt can retry the API.
+        set({ user: null, permissions: [], roles: [], initialized: true })
+      }
     },
 
     rehydrate: async () => {
-      await _fetchAndSet()
+      try {
+        await _fetchAndSet()
+      } catch {
+        // A temporary outage while checking a live session is not proof that
+        // the session expired. Preserve the current auth state and retry later.
+      }
     },
   }
 })

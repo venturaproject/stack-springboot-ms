@@ -2,7 +2,6 @@ package com.boilerplate.domain.auth;
 
 import com.boilerplate.domain.auth.event.RefreshTokenReused;
 import com.boilerplate.domain.auth.event.UserDeactivated;
-import com.boilerplate.domain.auth.event.UserLocked;
 import com.boilerplate.domain.shared.AbstractAggregateRoot;
 import jakarta.annotation.Nullable;
 import jakarta.persistence.Column;
@@ -14,10 +13,11 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -65,6 +65,9 @@ public class User extends AbstractAggregateRoot {
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = jakarta.persistence.CascadeType.ALL, orphanRemoval = true)
+    private Set<RefreshToken> refreshTokens = new HashSet<>();
 
     @Column(name = "failed_login_attempts", nullable = false)
     private int failedLoginAttempts;
@@ -137,6 +140,7 @@ public class User extends AbstractAggregateRoot {
             return;
         }
         this.active = false;
+        revokeAllRefreshTokens();
         recordEvent(new UserDeactivated(id, email.value()));
     }
 
@@ -155,25 +159,6 @@ public class User extends AbstractAggregateRoot {
         return lockedUntil != null && lockedUntil.isAfter(Instant.now());
     }
 
-    /**
-     * Count a failed login. Once {@code maxAttempts} accumulate within {@code window},
-     * the account locks for {@code lockFor} and a {@link UserLocked} event is recorded.
-     */
-    public void recordFailedLogin(int maxAttempts, Duration window, Duration lockFor) {
-        Instant now = Instant.now();
-        if (firstFailedLoginAt == null || firstFailedLoginAt.plus(window).isBefore(now)) {
-            firstFailedLoginAt = now;
-            failedLoginAttempts = 0;
-        }
-        failedLoginAttempts++;
-        if (failedLoginAttempts >= maxAttempts) {
-            lockedUntil = now.plus(lockFor);
-            failedLoginAttempts = 0;
-            firstFailedLoginAt = null;
-            recordEvent(new UserLocked(id, email.value(), lockedUntil));
-        }
-    }
-
     public void recordSuccessfulLogin() {
         failedLoginAttempts = 0;
         firstFailedLoginAt = null;
@@ -182,5 +167,39 @@ public class User extends AbstractAggregateRoot {
     /** A refresh token from this user's family was replayed after rotation. */
     public void reportRefreshTokenReuse() {
         recordEvent(new RefreshTokenReused(id, email.value()));
+    }
+
+    /** Starts a refresh-token family owned by this user aggregate. */
+    public RefreshToken startRefreshFamily(String tokenHash, Instant expiresAt) {
+        RefreshToken token = RefreshToken.startFamily(tokenHash, this, expiresAt);
+        refreshTokens.add(token);
+        return token;
+    }
+
+    /** Adds a rotated successor after revoking the presented token. */
+    public RefreshToken rotateRefreshToken(RefreshToken presented, String newTokenHash, Instant expiresAt) {
+        if (presented == null || !refreshTokens.contains(presented)) {
+            throw new IllegalArgumentException("Refresh token does not belong to this user");
+        }
+        presented.revoke();
+        RefreshToken successor = presented.rotate(newTokenHash, expiresAt);
+        refreshTokens.add(successor);
+        return successor;
+    }
+
+    public Optional<RefreshToken> refreshToken(String tokenHash) {
+        return refreshTokens.stream()
+                .filter(token -> token.getTokenHash().equals(tokenHash))
+                .findFirst();
+    }
+
+    public void revokeRefreshFamily(UUID familyId) {
+        refreshTokens.stream()
+                .filter(token -> token.getFamilyId().equals(familyId))
+                .forEach(RefreshToken::revoke);
+    }
+
+    public void revokeAllRefreshTokens() {
+        refreshTokens.forEach(RefreshToken::revoke);
     }
 }
